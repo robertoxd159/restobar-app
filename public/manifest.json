@@ -1,12 +1,11 @@
 {
-  "name": "Sabores Perú - Restobar",
+  "name": "Sabores Perú",
   "short_name": "SaboresPerú",
-  "description": "Sistema de pedidos en tiempo real",
-  "start_url": "/",
+  "description": "Sistema de Gestión Restobar",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ea580c",
-  
   "icons": [
     {
       "src": "/icon-192x192.png",
