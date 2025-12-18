@@ -9,18 +9,32 @@ import {
   BellOff, 
   ChefHat, 
   User, 
-  Clock 
+  Clock,
+  Lock
 } from 'lucide-react';
 
 export default function PanelMozo() {
+  // --- ESTADOS DE SEGURIDAD Y CARGA ---
+  const [autorizado, setAutorizado] = useState(false);
+  const [pin, setPin] = useState('');
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [totalPendientes, setTotalPendientes] = useState(0);
   const [confirmandoCancelacion, setConfirmandoCancelacion] = useState<number | null>(null);
   const [sonidoHabilitado, setSonidoHabilitado] = useState(false);
-  
-  // Usamos una referencia para comparar el total de pedidos sin causar bucles
   const prevPedidosCount = useRef(0);
 
+  // --- 1. CONFIGURACIÓN DINÁMICA DE PWA (SOLO PARA MOZO) ---
+  useEffect(() => {
+    if (autorizado) {
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = '/manifest.json';
+      document.head.appendChild(link);
+      return () => { document.head.removeChild(link); };
+    }
+  }, [autorizado]);
+
+  // --- 2. LÓGICA DE PEDIDOS Y ALERTAS ---
   const fetchPedidos = async () => {
     const { data } = await supabase
       .from('pedidos')
@@ -30,7 +44,6 @@ export default function PanelMozo() {
       .order('created_at', { ascending: false });
 
     if (data) {
-      // Lógica de Alerta: Si hay más pedidos "por_confirmar" que antes
       const nuevos = data.filter(p => p.estado === 'por_confirmar').length;
       if (nuevos > prevPedidosCount.current) {
         ejecutarAlerta();
@@ -42,22 +55,19 @@ export default function PanelMozo() {
   };
 
   const ejecutarAlerta = () => {
-    // 1. Vibración (Funciona en Android y PWAs instaladas)
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate([200, 100, 200]);
     }
-
-    // 2. Sonido (Solo si el usuario habilitó el sonido con un clic previo)
     if (sonidoHabilitado) {
       const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
-      audio.play().catch(e => console.log("Audio bloqueado por el navegador"));
+      audio.play().catch(() => console.log("Audio bloqueado"));
     }
   };
 
   useEffect(() => {
-    fetchPedidos();
+    if (!autorizado) return;
 
-    // Suscripción Realtime
+    fetchPedidos();
     const channel = supabase.channel('mozo-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
         fetchPedidos();
@@ -65,9 +75,9 @@ export default function PanelMozo() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [sonidoHabilitado]);
+  }, [autorizado, sonidoHabilitado]);
 
-  // Funciones de acción
+  // --- 3. ACCIONES ---
   const confirmarPedido = async (id: number) => {
     await supabase.from('pedidos').update({ estado: 'pendiente' }).eq('id', id);
   };
@@ -81,9 +91,38 @@ export default function PanelMozo() {
     await supabase.from('pedidos').update({ pide_cuenta: false, estado: 'completado', archivado: true }).eq('id', id);
   };
 
+  // --- PANTALLA DE BLOQUEO POR PIN ---
+  if (!autorizado) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6 font-sans">
+        <div className="bg-white/5 p-8 rounded-[3rem] border border-white/10 w-full max-w-sm text-center">
+          <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-2xl font-black mb-2 uppercase italic tracking-tighter">Acceso Personal</h2>
+          <p className="text-slate-400 text-xs font-bold mb-8 uppercase tracking-widest">Introduce el PIN de Mozo</p>
+          
+          <input 
+            type="password" 
+            pattern="\d*" 
+            inputMode="numeric"
+            placeholder="••••" 
+            className="bg-white text-slate-900 border-none p-5 rounded-2xl text-center text-4xl w-full mb-6 outline-none font-black tracking-[1rem]"
+            value={pin}
+            onChange={(e) => {
+              setPin(e.target.value);
+              if(e.target.value === '1234') setAutorizado(true); // <--- CAMBIA TU PIN AQUÍ
+            }}
+          />
+          <p className="text-white/20 text-[10px] font-black uppercase tracking-[0.2em]">Sabores Perú - Sistema Interno</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- PANEL PRINCIPAL (MOZO AUTORIZADO) ---
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans">
-      {/* Header Fijo con Switch de Sonido */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-black italic uppercase text-slate-900 tracking-tighter">
@@ -91,7 +130,7 @@ export default function PanelMozo() {
           </h1>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Panel Conectado</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Personal Logueado</span>
           </div>
         </div>
 
@@ -104,21 +143,18 @@ export default function PanelMozo() {
       </header>
 
       <main className="max-w-2xl mx-auto p-6">
-        {/* Resumen de Estado */}
         {totalPendientes > 0 && (
-          <div className="mb-8 bg-orange-500 text-white p-6 rounded-[2rem] shadow-lg shadow-orange-200 flex justify-between items-center">
-            <div className="font-black italic uppercase text-lg">Tienes {totalPendientes} {totalPendientes === 1 ? 'pedido nuevo' : 'pedidos nuevos'}</div>
+          <div className="mb-8 bg-orange-500 text-white p-6 rounded-[2rem] shadow-lg shadow-orange-200 flex justify-between items-center animate-in fade-in zoom-in duration-500">
+            <div className="font-black italic uppercase text-lg leading-none">Tienes {totalPendientes} {totalPendientes === 1 ? 'nuevo pedido' : 'pedidos nuevos'}</div>
             <ChefHat size={32} className="opacity-50" />
           </div>
         )}
 
         <div className="grid gap-8">
           {pedidos.length === 0 ? (
-            <div className="text-center py-20">
-              <div className="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100 text-slate-200">
-                <Check size={40} />
-              </div>
-              <p className="text-slate-400 font-bold uppercase italic text-sm tracking-widest">No hay nada pendiente</p>
+            <div className="text-center py-20 opacity-30">
+              <Check size={48} className="mx-auto mb-4" />
+              <p className="font-black uppercase italic tracking-widest text-sm">Sin pendientes</p>
             </div>
           ) : (
             pedidos.map((p) => (
@@ -137,19 +173,16 @@ export default function PanelMozo() {
                       <span className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">Mesa {p.mesa}</span>
                       {p.estado === 'por_confirmar' && <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">Nuevo</span>}
                     </div>
-                    <h2 className="text-2xl font-black text-slate-800 uppercase italic flex items-center gap-2">
-                      <User size={20} className="text-slate-300" /> {p.cliente}
-                    </h2>
+                    <h2 className="text-2xl font-black text-slate-800 uppercase italic leading-none">{p.cliente}</h2>
                   </div>
                   <div className="text-right font-black text-slate-900 text-2xl italic">S/ {p.total?.toFixed(2)}</div>
                 </div>
 
-                {/* Lista de platos comprimida */}
                 <div className="bg-slate-50 p-5 rounded-2xl mb-8 space-y-2 border border-slate-100">
                   {p.items?.map((item: any, i: number) => (
-                    <div key={i} className="flex justify-between font-bold text-slate-600">
-                      <span className="uppercase text-sm italic">{item.nombre}</span>
-                      <span className="text-orange-600">x{item.cantidad}</span>
+                    <div key={i} className="flex justify-between font-bold text-slate-600 text-sm">
+                      <span className="uppercase italic">{item.nombre}</span>
+                      <span className="bg-white px-2 rounded-md border text-orange-600">x{item.cantidad}</span>
                     </div>
                   ))}
                 </div>
@@ -157,8 +190,8 @@ export default function PanelMozo() {
                 <div className="grid grid-cols-1 gap-3">
                   {p.estado === 'por_confirmar' && !confirmandoCancelacion && (
                     <div className="grid grid-cols-2 gap-3">
-                      <button onClick={() => setConfirmandoCancelacion(p.id)} className="bg-white text-red-500 p-5 rounded-2xl font-black text-xs uppercase border-2 border-red-50 hover:bg-red-50 transition-colors">Cancelar</button>
-                      <button onClick={() => confirmarPedido(p.id)} className="bg-orange-500 text-white p-5 rounded-2xl font-black text-xs uppercase shadow-lg shadow-orange-100 hover:bg-orange-600 active:scale-95 transition-all">Aceptar</button>
+                      <button onClick={() => setConfirmandoCancelacion(p.id)} className="bg-white text-red-500 p-5 rounded-2xl font-black text-xs uppercase border-2 border-red-50">Cancelar</button>
+                      <button onClick={() => confirmarPedido(p.id)} className="bg-orange-500 text-white p-5 rounded-2xl font-black text-xs uppercase shadow-lg shadow-orange-100">Aceptar</button>
                     </div>
                   )}
 
@@ -170,14 +203,14 @@ export default function PanelMozo() {
                   )}
                   
                   {p.pide_cuenta && (
-                    <button onClick={() => marcarPagado(p.id)} className="w-full bg-emerald-600 text-white p-6 rounded-[2rem] font-black uppercase text-sm shadow-xl hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-3">
-                      <Check size={20} strokeWidth={4} /> FINALIZAR Y LIBERAR MESA
+                    <button onClick={() => marcarPagado(p.id)} className="w-full bg-emerald-600 text-white p-6 rounded-[2rem] font-black uppercase text-sm shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                      <Check size={20} strokeWidth={4} /> LIBERAR MESA
                     </button>
                   )}
 
                   {p.estado === 'pendiente' && !p.pide_cuenta && (
-                    <div className="text-center py-2 flex items-center justify-center gap-2 text-slate-400 font-black text-[10px] uppercase italic tracking-widest border border-dashed border-slate-200 rounded-xl">
-                      <Clock size={12} /> Esperando cocina o pago
+                    <div className="text-center py-2 flex items-center justify-center gap-2 text-slate-400 font-black text-[10px] uppercase italic border border-dashed border-slate-200 rounded-xl">
+                      <Clock size={12} /> Orden en preparación
                     </div>
                   )}
                 </div>

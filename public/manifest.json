@@ -1,8 +1,7 @@
 {
-  "name": "Sabores Perú",
-  "short_name": "SaboresPerú",
-  "description": "Sistema de Gestión Restobar",
-  "start_url": ".",
+  "name": "Panel Mozo - Sabores Perú",
+  "short_name": "Mozo App",
+  "start_url": "/mozo",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ea580c",
@@ -10,11 +9,6 @@
     {
       "src": "/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-512x512.png",
-      "sizes": "512x512",
       "type": "image/png"
     }
   ]
