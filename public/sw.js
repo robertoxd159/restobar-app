@@ -1,0 +1,23 @@
+// public/sw.js
+self.addEventListener('push', function(event) {
+  const data = event.data ? event.data.json() : { title: 'Nuevo Pedido', body: '¡Revisa el panel de mozo!' };
+  
+  const options = {
+    body: data.body,
+    icon: '/icon-192x192.png',
+    badge: '/icon-192x192.png',
+    vibrate: [200, 100, 200], // Vibración profesional
+    data: { url: '/mozo' }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  event.waitUntil(
+    clients.openWindow(event.notification.data.url)
+  );
+});
